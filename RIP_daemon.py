@@ -1,8 +1,12 @@
 import sys
+import time
+import select
 from socket import socket, AF_INET, SOCK_DGRAM
 
-global router
-router = None
+SOCKETS = []
+PERIODIC_UPDATE_INTERVAL = 5       # seconds
+ROUTE_TIMEOUT = 30                 # 6 × periodic
+GARBAGE_COLLECTION_INTERVAL = 20   # 4 × periodic
 
 class Router:
     
@@ -11,6 +15,7 @@ class Router:
         self.input_ports = input_ports
         self.output_ports = output_ports
         self.routing_table = {}
+        self.send_socket = socket(AF_INET, SOCK_DGRAM)
         self.check_constraints()
         self.instantiate_ports()
         self.convert_output_ports()
@@ -28,11 +33,11 @@ class Router:
             print(f'Destination: {entry} Cost: {self.routing_table[entry][0]}, Next hop: {self.routing_table[entry][1][0]}')
         print('--------------------------------')
 
-
     def instantiate_ports(self):
         for port in self.input_ports:
             sock = socket(AF_INET, SOCK_DGRAM)
             sock.bind(('', port))
+            SOCKETS.append(sock)
 
     def check_constraints(self):
         if self.id < 1 or self.id > 64000:
@@ -46,7 +51,6 @@ class Router:
             if port < 1024 or port > 64000:
                 raise Exception("Port numbers must be between 1024 and 64000 (inclusive).")
 
-
     def convert_output_ports(self):
         self.output_ports = [tuple(map(int, output.split('-'))) for output in self.output_ports]
 
@@ -54,8 +58,7 @@ class Router:
         for output in self.output_ports:
             self.routing_table[output[2]] = (output[1], (output[2], output[0]))
 
-
-    def construct_packet(self):
+    def construct_packet(self, neighbour_id):
         packet = bytearray()
 
         packet.append(2) #COMMAND: reponse
@@ -67,7 +70,7 @@ class Router:
             dest_id = self.routing_table[entry][1][0]
             next_hop = self.routing_table[entry][1][0]
 
-            if next_hop == self.id: #split-horizon with poison reverse
+            if next_hop == neighbour_id: #split-horizon with poison reverse
                 cost = 16
 
             packet += (2).to_bytes(2, 'big') #address family identifier
@@ -141,8 +144,17 @@ class Router:
 
         return routes
 
+    def send_packets(self):
+        for output in self.output_ports:
+            neighbour_port = output[0]
+            neighbour_id = output[2]
 
-    def RIPv2(self):
+            packet = self.construct_packet(neighbour_id)
+
+            self.send_socket.sendto(packet, ('localhost', neighbour_port))
+            print(f"Packet sent to router {neighbour_id} on port {neighbour_port}")
+
+    def calculate_route(self):
         pass
 
 
@@ -205,11 +217,21 @@ def read_config_file(filename):
     return config
 
 
-
 def routing_loop():
-    pass
-    #while True:
-    #    ---------
+    ROUTER.send_packets()
+    while True:
+        readable, _, _ = select.select(SOCKETS, [], [], 1)
+
+        if readable:
+            for sock in readable:
+                try:
+                    data, addr = sock.recvfrom(1024)
+                    ROUTER.decode_packet(data)
+                except Exception as e:
+                    print(f"Error receiving from socket: {e}")
+            
+            # Always run after select call — even if no sockets were readable
+            #ROUTER.check_timers(time.time())  # Periodic updates, route timeouts, etc.
 
 
 def main():
@@ -222,10 +244,12 @@ def main():
     router_id = config.get('router-id')
     input_ports = config.get('input-ports', [])
     output_ports = config.get('output-ports', [])
-    router = (Router(router_id, input_ports, output_ports))
 
-    print(router)
-    router.display_routing_table()
+    global ROUTER
+    ROUTER = Router(router_id, input_ports, output_ports)
+
+    print(ROUTER)
+    ROUTER.display_routing_table()
 
     routing_loop()
 
