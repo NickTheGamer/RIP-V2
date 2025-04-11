@@ -1,8 +1,8 @@
 import sys
 from socket import socket, AF_INET, SOCK_DGRAM
 
-global routers
-routers = []
+global router
+router = None
 
 class Router:
     
@@ -147,36 +147,63 @@ class Router:
 
 
 def read_config_file(filename):
-    routers_config = []
-    current_router = {}
+    #Reads a config file for a single router and returns a dictionary with the configuration.
 
     with open(filename, 'r') as file:
-        for line in file:
-            line = line.strip()
-            if not line:
-                if current_router:
-                    routers_config.append(current_router)
-                    current_router = {}
-                continue
+        lines = [line.strip() for line in file if line.strip()]
 
-            parts = line.split()
-            if not parts:
-                continue
+    if len(lines) != 3:
+        raise Exception(f"Config file '{filename}' must contain exactly 3 non-empty lines.")
 
-            key = parts[0].lower().replace('_', '-')
-            values = parts[1:]
+    config = {}
 
-            if key == 'router-id':
-                current_router['router-id'] = int(values[0])
-            elif key == 'input-ports':
-                current_router['input-ports'] = list(map(int, values))
-            elif key == 'output-ports':
-                current_router['output-ports'] = values
+    #router-id
+    parts = lines[0].split()
+    if parts[0].lower() != 'router-id' or len(parts) != 2:
+        raise Exception(f"Line 1 in '{filename}' must be: router-id <id>")
+    try:
+        config['router-id'] = int(parts[1])
+        if config['router-id'] < 1 or config['router-id'] > 64000:
+            raise ValueError("Router ID must be between 1 and 64000 (inclusive).")
+    except ValueError:
+        raise ValueError("Router ID must be an integer.")
 
-        if current_router:
-            routers_config.append(current_router)
+    #input-ports
+    parts = lines[1].split()
+    if parts[0].lower() != 'input-ports' or len(parts) < 2:
+        raise Exception(f"Line 2 in '{filename}' must be: input-ports <port1> <port2> ...")
+    try:
+        config['input-ports'] = list(map(int, parts[1:]))
+        for port in config['input-ports']:
+            if port < 1024 or port > 64000:
+                raise ValueError("Port numbers must be between 1024 and 64000 (inclusive).")
+    except ValueError:
+        raise ValueError("Input ports must be integers.")
 
-    return routers_config
+    #output-ports
+    parts = lines[2].split()
+    if parts[0].lower() != 'output-ports' or len(parts) < 2:
+        raise ValueError(f"Line 3 in '{filename}' must be: output-ports <port-cost-id> ...")
+    config['output-ports'] = parts[1:]
+    for output in config['output-ports']:
+        parts = output.split('-')
+        if len(parts) != 3:
+            raise Exception("Output ports must be in the format <port-cost-id>.")
+        try:
+            port = int(parts[0])
+            cost = int(parts[1])
+            id = int(parts[2])
+            if port < 1024 or port > 64000:
+                raise ValueError("Port numbers must be between 1024 and 64000 (inclusive).")
+            if cost < 1 or cost > 16:
+                raise ValueError("Cost must be between 1 and 16 (inclusive).")
+            if id < 1 or id > 64000:
+                raise ValueError("Router ID must be between 1 and 64000 (inclusive).")
+        except ValueError:
+            raise ValueError("Output ports must be integers.")
+
+    return config
+
 
 
 def routing_loop():
@@ -190,13 +217,15 @@ def main():
         sys.exit(1)
 
     config_file = sys.argv[1]
-    routers_config = read_config_file(config_file)
+    config = read_config_file(config_file)
 
-    for config in routers_config:
-        router_id = config.get('router-id')
-        input_ports = config.get('input-ports', [])
-        output_ports = config.get('output-ports', [])
-        routers.append(Router(router_id, input_ports, output_ports))
+    router_id = config.get('router-id')
+    input_ports = config.get('input-ports', [])
+    output_ports = config.get('output-ports', [])
+    router = (Router(router_id, input_ports, output_ports))
+
+    print(router)
+    router.display_routing_table()
 
     routing_loop()
 
