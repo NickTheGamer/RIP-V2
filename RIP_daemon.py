@@ -20,6 +20,9 @@ class Router:
         self.instantiate_ports()
         self.convert_output_ports()
         self.initialise_routing_table()
+        self.periodic_update_timer = time.time()
+        self.route_timers = {}
+        self.garbage_timers = {}
 
     def __str__(self):
         return f'Router ID: {self.id}\n' \
@@ -30,7 +33,7 @@ class Router:
         print('--------------------------------')
         print(f'Router: {self.id}')
         for entry in self.routing_table.keys():
-            print(f'Destination: {entry} Cost: {self.routing_table[entry][0]}, Next hop: {self.routing_table[entry][1][0]}')
+            print(f'Destination: {entry} Cost: {self.routing_table[entry][0]}, Next hop: {self.routing_table[entry][1][0]} Is valid: {self.routing_table[entry][2]}')
         print('--------------------------------')
 
     def instantiate_ports(self):
@@ -56,7 +59,7 @@ class Router:
 
     def initialise_routing_table(self):
         for output in self.output_ports:
-            self.routing_table[output[2]] = (output[1], (output[2], output[0]))
+            self.routing_table[output[2]] = (output[1], (output[2], output[0]), True)
 
     def construct_packet(self, neighbour_id):
         packet = bytearray()
@@ -66,14 +69,13 @@ class Router:
         packet += self.id.to_bytes(2, 'big') #Router-ID in place of zero-byte field
 
         for entry in self.routing_table.keys():
-            cost = self.routing_table[entry][0]
-            dest_id = self.routing_table[entry][1][0]
-            next_hop = self.routing_table[entry][1][0]
+            dest_id = entry
+            cost, (next_hop, _), is_valid = self.routing_table[entry]
 
-            if next_hop == neighbour_id: #split-horizon with poison reverse
+            if next_hop == neighbour_id or not is_valid: #split-horizon with poison reverse
                 cost = 16
 
-            packet += (2).to_bytes(2, 'big') #address family identifier
+            packet += (2).to_bytes(2, 'big') #address family identifier (AF_INET)
             packet += (0).to_bytes(2, 'big') #Route tag (set to 0)
             packet += dest_id.to_bytes(4, 'big')
             packet += bytes(4) #Subnet mask not used
@@ -81,7 +83,6 @@ class Router:
             packet += cost.to_bytes(4, 'big')
 
         return packet
-
 
     def decode_packet(self, packet):
         if packet[0] != 2: #Check Command field
@@ -142,20 +143,49 @@ class Router:
 
             routes.append((sender_id, dest_id, cost))
 
-        return routes
+        self.calculate_routes(routes) #Update the routing table with the new routes
 
     def send_packets(self):
         for output in self.output_ports:
             neighbour_port = output[0]
             neighbour_id = output[2]
 
+            if neighbour_id not in self.routing_table: #If the neighbour is not in the routing table, we don't send a packet
+                continue
+            if self.routing_table[neighbour_id][2] == False: #If the route is invalid, we don't send a packet
+                continue
+            
             packet = self.construct_packet(neighbour_id)
-
             self.send_socket.sendto(packet, ('localhost', neighbour_port))
             print(f"Packet sent to router {neighbour_id} on port {neighbour_port}")
 
-    def calculate_route(self):
-        pass
+    def update_timers(self):
+        if time.time() - ROUTER.periodic_update_timer >= PERIODIC_UPDATE_INTERVAL: #Periodic updates
+            self.send_packets()
+            ROUTER.periodic_update_timer = time.time()
+
+        for entry in self.routing_table.keys(): #Update the route timers
+            if entry not in ROUTER.route_timers:
+                ROUTER.route_timers[entry] = time.time()
+            else:
+                if self.routing_table[entry][2] == True: #Only need to consider valid routes
+                    if time.time() - ROUTER.route_timers[entry] >= ROUTE_TIMEOUT:
+                        print(f"Route to {entry} has timed out.")
+                        self.routing_table[entry] = (16, self.routing_table[entry][1], False) #Set the route to invalid
+                        ROUTER.garbage_timers[entry] = time.time() #Add garbage timer
+        
+        for entry in list(ROUTER.garbage_timers.keys()): #Update the garbage collection timers and delete the routes if necessary
+            if time.time() - ROUTER.garbage_timers[entry] >= GARBAGE_COLLECTION_INTERVAL:
+                print(f"Route to {entry} has been garbage collected.")
+                del ROUTER.route_timers[entry]
+                del self.routing_table[entry]
+                del  ROUTER.garbage_timers[entry]
+
+    def calculate_routes(self, routes):
+        ###Placeholder, to be replaced with actual logic
+        for sender_id, dest_id, cost in routes:
+            if sender_id in ROUTER.route_timers:
+                ROUTER.route_timers[sender_id] = time.time() #Update the route timer based on which router sent the packet
 
 
 def read_config_file(filename):
@@ -219,19 +249,20 @@ def read_config_file(filename):
 
 def routing_loop():
     ROUTER.send_packets()
+    
     while True:
         readable, _, _ = select.select(SOCKETS, [], [], 1)
 
         if readable:
             for sock in readable:
                 try:
-                    data, addr = sock.recvfrom(1024)
+                    data, _ = sock.recvfrom(1024)
                     ROUTER.decode_packet(data)
                 except Exception as e:
                     print(f"Error receiving from socket: {e}")
-            
-            # Always run after select call — even if no sockets were readable
-            #ROUTER.check_timers(time.time())  # Periodic updates, route timeouts, etc.
+        
+        #Always check timers
+        ROUTER.update_timers()
 
 
 def main():
