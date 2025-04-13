@@ -1,0 +1,29 @@
+TODO List for RIPv2 Implementation:
+
+1. **Implement calculate_routes() function**
+    - This is the main bellman ford equation, which needs to consult the routing table and check that cost 
+    isn't 16, check for loops, identify cheapest path etc and update the routing table.
+    - In addition, whenever a route is received, the function should first update the route/garbage timers for
+    that route, and if they exist, reset the route timer and delete the garbage timer if it exists.
+    - New routes do not need to be added in calculate_routes() as the update_timers() function iterates over
+    the routing table and adds timers if necessary.
+
+2. **Create large network of routers**
+    - Theoretically if calculate_routes (aka the actual distance vector algorithm) is complete, the protocol
+    should be finished. However this obviously requires extensive debugging with a larger network.
+    - A periodic timer to print the routing table could be implemented as well for further clarity.
+
+3. **Debugging/Testing**
+    - After this we just need to simulate test conditions by killing routers and bringing them back up
+    while others are still running. Changes should quickly peroforate across the network as timers expire,
+    routes get added etc.
+    - There is a large graph towards the end of the assignment brief that could just be copied verbatim.
+
+4. **Report**
+    - While doing all the testing, we should take notes of the results of each test and if we made any changes
+    or not.
+    - The report is basically a breakdown of how our program is structured, and then just verifying that 
+    it actually works with the tests.
+    - We should try show that our split-horizon with poison reverse actually works, and then maybe try induce
+    the case where three routers lie to each other to show that even our solution can't solve it which means
+    that we've correctly implemented RIPv2.
