@@ -58,8 +58,14 @@ class Router:
         self.output_ports = [tuple(map(int, output.split('-'))) for output in self.output_ports]
 
     def initialise_routing_table(self):
+        # Add the router itself to the routing table with a cost of 0
+        self.routing_table[self.id] = (0, (self.id, None), True)
+
+        # Add neighbors from the output ports to the routing table
         for output in self.output_ports:
-            self.routing_table[output[2]] = (output[1], (output[2], output[0]), True)
+            neighbor_id = output[2]
+            cost = output[1]
+            self.routing_table[neighbor_id] = (cost, (neighbor_id, output[0]), True)
 
     def construct_packet(self, neighbour_id):
         packet = bytearray()
@@ -182,16 +188,48 @@ class Router:
                 del  ROUTER.garbage_timers[entry]
 
     def calculate_routes(self, routes):
-        ###Placeholder, to be replaced with actual logic
+        """
+        Updates the routing table based on the received routes using the Distance Vector Routing Algorithm.
+        """
+        # Keep track of routes that are still being advertised
+        advertised_routes = set()
+
         for sender_id, dest_id, cost in routes:
-            if sender_id in ROUTER.route_timers:
-                ROUTER.route_timers[sender_id] = time.time() #Update the route timer based on which router sent the packet
+            print(f"Processing route: sender={sender_id}, dest={dest_id}, cost={cost}")
+
+            # Ensure the sender exists in the routing table
+            if sender_id not in self.routing_table:
+                print(f"Sender {sender_id} not in routing table. Skipping.")
+                continue
+
+            # Calculate the new cost to the destination via the sender
+            new_cost = cost + self.routing_table[sender_id][0]
+            print(f"New cost to {dest_id} via {sender_id}: {new_cost}")
+
+            # Skip routes with invalid costs
+            if new_cost > 16:
+                print(f"Cost to {dest_id} exceeds 16. Skipping.")
+                continue
+
+            # Update the route if the new cost is lower or the next hop is the sender
+            if dest_id not in self.routing_table or new_cost < self.routing_table[dest_id][0]:
+                self.routing_table[dest_id] = (new_cost, sender_id, True)
+                print(f"Updated routing table entry for {dest_id}: {self.routing_table[dest_id]}")
+
+            # Mark the route as advertised
+            advertised_routes.add(dest_id)
+
+        # Invalidate routes that are no longer advertised
+        for dest_id in list(self.routing_table.keys()):
+            if dest_id not in advertised_routes and dest_id != self.id:
+                print(f"Route to {dest_id} is no longer advertised. Marking as unreachable.")
+                self.routing_table[dest_id] = (16, None, False)
 
 
 def read_config_file(filename):
     #Reads a config file for a single router and returns a dictionary with the configuration.
 
-    with open(filename, 'r') as file:
+    with open(filename, 'r') as file, open(filename, 'r') as file:
         lines = [line.strip() for line in file if line.strip()]
 
     if len(lines) != 3:
