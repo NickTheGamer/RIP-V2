@@ -229,9 +229,7 @@ class Router:
                 self.route_timers[dest_id] = time.time()  # Reset the timer for this route
 
         # Log the updated routing table
-        print(f"Updated routing table for Router {self.id}:")
-        for dest_id, (cost, next_hop, is_valid) in self.routing_table.items():
-            print(f"Destination: {dest_id}, Cost: {cost}, Next Hop: {next_hop}, Valid: {is_valid}")
+        ROUTER.display_routing_table()
 
 
 def read_config_file(filename):
