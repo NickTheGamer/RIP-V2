@@ -1,0 +1,3 @@
+router-id 7
+input-ports 11004 11012
+output-ports 11010-6-4 11015-8-1

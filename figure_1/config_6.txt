@@ -1,0 +1,3 @@
+router-id 6
+input-ports 11003 11014
+output-ports 11013-1-5 11001-5-1

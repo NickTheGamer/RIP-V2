@@ -58,14 +58,8 @@ class Router:
         self.output_ports = [tuple(map(int, output.split('-'))) for output in self.output_ports]
 
     def initialise_routing_table(self):
-        # Add the router itself to the routing table with a cost of 0
-        self.routing_table[self.id] = (0, (self.id, None), True)
-
-        # Add neighbors from the output ports to the routing table
         for output in self.output_ports:
-            neighbor_id = output[2]
-            cost = output[1]
-            self.routing_table[neighbor_id] = (cost, (neighbor_id, output[0]), True)
+            self.routing_table[output[2]] = (output[1], (output[2], output[0]), True)
 
     def construct_packet(self, neighbour_id):
         packet = bytearray()
@@ -80,6 +74,7 @@ class Router:
 
             if next_hop == neighbour_id or not is_valid: #split-horizon with poison reverse
                 cost = 16
+                print(f"Poison reverse: setting cost to 16 for {dest_id} to {neighbour_id}")
 
             packet += (2).to_bytes(2, 'big') #address family identifier (AF_INET)
             packet += (0).to_bytes(2, 'big') #Route tag (set to 0)
@@ -146,10 +141,16 @@ class Router:
                 print('Invalid RIPv2 entry with invalid cost. Packet dropped.')
                 return
             index += 4
-
-            routes.append((sender_id, dest_id, cost))
-
-        self.calculate_routes(routes) #Update the routing table with the new routes
+            try:
+                print(f"Received route from {sender_id} to {dest_id} with cost {cost}")
+                routes.append((sender_id, dest_id, cost))
+            except Exception as e:
+                print(f"Error processing route: {e}")
+        try:
+            print("calculating routes...")
+            self.calculate_routes(routes) #Update the routing table with the new routes
+        except Exception as e:
+            print(f"Error calculating routes: {e}")
 
     def send_packets(self):
         for output in self.output_ports:
@@ -189,47 +190,54 @@ class Router:
 
     def calculate_routes(self, routes):
         """
-        Updates the routing table based on the received routes using the Distance Vector Routing Algorithm.
+        Updates the routing table based on received routes.
+        Ensures no loops, ignores unreachable routes (cost=16),
+        and updates the table with the cheapest path.
+        Also resets route timers and removes garbage timers for received routes.
         """
-        # Keep track of routes that are still being advertised
-        advertised_routes = set()
-
         for sender_id, dest_id, cost in routes:
-            print(f"Processing route: sender={sender_id}, dest={dest_id}, cost={cost}")
-
-            # Ensure the sender exists in the routing table
-            if sender_id not in self.routing_table:
-                print(f"Sender {sender_id} not in routing table. Skipping.")
+            # Ignore routes with cost 16 (unreachable)
+            if cost == 16:
                 continue
 
-            # Calculate the new cost to the destination via the sender
-            new_cost = cost + self.routing_table[sender_id][0]
-            print(f"New cost to {dest_id} via {sender_id}: {new_cost}")
+            # Reset the route timer and delete the garbage timer if they exist
+            if dest_id in self.route_timers:
+                self.route_timers[dest_id] = time.time()
+            if dest_id in self.garbage_timers:
+                del self.garbage_timers[dest_id]
 
-            # Skip routes with invalid costs
-            if new_cost > 16:
-                print(f"Cost to {dest_id} exceeds 16. Skipping.")
+            # Calculate the total cost to the destination via the sender
+            total_cost = cost + self.routing_table[sender_id][0] if sender_id in self.routing_table else 16
+
+            # Ignore if total cost exceeds the maximum allowed cost
+            if total_cost > 16:
                 continue
 
-            # Update the route if the new cost is lower or the next hop is the sender
-            if dest_id not in self.routing_table or new_cost < self.routing_table[dest_id][0]:
-                self.routing_table[dest_id] = (new_cost, sender_id, True)
-                print(f"Updated routing table entry for {dest_id}: {self.routing_table[dest_id]}")
+            # Check for loops: avoid adding a route back to the sender
+            if dest_id == self.id:
+                continue
 
-            # Mark the route as advertised
-            advertised_routes.add(dest_id)
+            # Update the routing table if:
+            # 1. The destination is not in the table, or
+            # 2. The new route has a lower cost, or
+            # 3. The next hop for the destination is the sender (to refresh the route)
+            if (dest_id not in self.routing_table or
+                total_cost < self.routing_table[dest_id][0] or
+                self.routing_table[dest_id][1][0] == sender_id):
+                
+                self.routing_table[dest_id] = (total_cost, (sender_id, self.output_ports[0][0]), True)
+                self.route_timers[dest_id] = time.time()  # Reset the timer for this route
 
-        # Invalidate routes that are no longer advertised
-        for dest_id in list(self.routing_table.keys()):
-            if dest_id not in advertised_routes and dest_id != self.id:
-                print(f"Route to {dest_id} is no longer advertised. Marking as unreachable.")
-                self.routing_table[dest_id] = (16, None, False)
+        # Log the updated routing table
+        print(f"Updated routing table for Router {self.id}:")
+        for dest_id, (cost, next_hop, is_valid) in self.routing_table.items():
+            print(f"Destination: {dest_id}, Cost: {cost}, Next Hop: {next_hop}, Valid: {is_valid}")
 
 
 def read_config_file(filename):
     #Reads a config file for a single router and returns a dictionary with the configuration.
 
-    with open(filename, 'r') as file, open(filename, 'r') as file:
+    with open(filename, 'r') as file:
         lines = [line.strip() for line in file if line.strip()]
 
     if len(lines) != 3:

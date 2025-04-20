@@ -1,0 +1,23 @@
+======================================================================
+FAIL: test_link_failure (__main__.TestLargeNetwork.test_link_failure)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/noah-davis/Documents/2025/COSC364/RIP assignment/cosc364-assignment-1/test_large_network.py", line 111, in test_link_failure
+    self.assertEqual(self.router.routing_table.get(3), (16, None, False))
+AssertionError: Tuples differ: (2, (2, None), True) != (16, None, False)
+
+First differing element 0:
+2
+16
+
+- (2, (2, None), True)
++ (16, None, False)
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.016s
+
+FAILED (failures=1)
+
+
+The calculate routes function did not handle the removal of routes when a link is no longer advertised. 
+
