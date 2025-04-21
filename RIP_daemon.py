@@ -7,6 +7,7 @@ SOCKETS = []
 PERIODIC_UPDATE_INTERVAL = 5       # seconds
 ROUTE_TIMEOUT = 30                 # 6 × periodic
 GARBAGE_COLLECTION_INTERVAL = 20   # 4 × periodic
+ROUTING_TABLE_PRINT_INTERVAL = 15 # seconds
 
 class Router:
     
@@ -21,6 +22,7 @@ class Router:
         self.convert_output_ports()
         self.initialise_routing_table()
         self.periodic_update_timer = time.time()
+        self.routing_table_timer = time.time()
         self.route_timers = {}
         self.garbage_timers = {}
 
@@ -33,7 +35,7 @@ class Router:
         print('--------------------------------')
         print(f'Router: {self.id}')
         for entry in self.routing_table.keys():
-            print(f'Destination: {entry} Cost: {self.routing_table[entry][0]}, Next hop: {self.routing_table[entry][1][0]} Is valid: {self.routing_table[entry][2]}')
+            print(f'Destination: {entry} Cost: {self.routing_table[entry][0]}, Next hop: {self.routing_table[entry][1][0]} Is valid: {self.routing_table[entry][2]} Is Neighbour: {self.routing_table[entry][3]}')
         print('--------------------------------')
 
     def instantiate_ports(self):
@@ -59,7 +61,7 @@ class Router:
 
     def initialise_routing_table(self):
         for output in self.output_ports:
-            self.routing_table[output[2]] = (output[1], (output[2], output[0]), True)
+            self.routing_table[output[2]] = (output[1], (output[2], output[0]), True, True)
 
     def construct_packet(self, neighbour_id):
         packet = bytearray()
@@ -72,9 +74,11 @@ class Router:
             dest_id = entry
             cost, (next_hop, _), is_valid = self.routing_table[entry]
 
-            if next_hop == neighbour_id or not is_valid: #split-horizon with poison reverse
+            if not is_valid: #If the route is invalid, we don't send it
+                continue
+            if next_hop == neighbour_id: #split-horizon with poison reverse
                 cost = 16
-                print(f"Poison reverse: setting cost to 16 for {dest_id} to {neighbour_id}")
+                #print(f"Poison reverse: setting cost to 16 for {dest_id} to {neighbour_id}")
 
             packet += (2).to_bytes(2, 'big') #address family identifier (AF_INET)
             packet += (0).to_bytes(2, 'big') #Route tag (set to 0)
@@ -142,12 +146,12 @@ class Router:
                 return
             index += 4
             try:
-                print(f"Received route from {sender_id} to {dest_id} with cost {cost}")
+                #print(f"Received route from {sender_id} to {dest_id} with cost {cost}")
                 routes.append((sender_id, dest_id, cost))
             except Exception as e:
                 print(f"Error processing route: {e}")
         try:
-            print("calculating routes...")
+            #print("calculating routes...")
             self.calculate_routes(routes) #Update the routing table with the new routes
         except Exception as e:
             print(f"Error calculating routes: {e}")
@@ -164,12 +168,16 @@ class Router:
             
             packet = self.construct_packet(neighbour_id)
             self.send_socket.sendto(packet, ('localhost', neighbour_port))
-            print(f"Packet sent to router {neighbour_id} on port {neighbour_port}")
+            #print(f"Packet sent to router {neighbour_id} on port {neighbour_port}")
 
     def update_timers(self):
         if time.time() - ROUTER.periodic_update_timer >= PERIODIC_UPDATE_INTERVAL: #Periodic updates
             self.send_packets()
             ROUTER.periodic_update_timer = time.time()
+        
+        if time.time() - ROUTER.routing_table_timer >= ROUTING_TABLE_PRINT_INTERVAL: #Print routing table
+            ROUTER.display_routing_table()
+            ROUTER.routing_table_timer = time.time()
 
         for entry in self.routing_table.keys(): #Update the route timers
             if entry not in ROUTER.route_timers:
@@ -207,7 +215,11 @@ class Router:
                 del self.garbage_timers[dest_id]
 
             # Calculate the total cost to the destination via the sender
-            total_cost = cost + self.routing_table[sender_id][0] if sender_id in self.routing_table else 16
+            if sender_id not in self.routing_table or not self.routing_table[sender_id][2]:
+                total_cost = 16
+            else:
+                total_cost = cost + self.routing_table[sender_id][0]
+
 
             # Ignore if total cost exceeds the maximum allowed cost
             if total_cost > 16:
@@ -227,9 +239,6 @@ class Router:
                 
                 self.routing_table[dest_id] = (total_cost, (sender_id, self.output_ports[0][0]), True)
                 self.route_timers[dest_id] = time.time()  # Reset the timer for this route
-
-        # Log the updated routing table
-        ROUTER.display_routing_table()
 
 
 def read_config_file(filename):
