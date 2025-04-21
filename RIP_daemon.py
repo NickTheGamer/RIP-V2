@@ -20,6 +20,7 @@ class Router:
         self.check_constraints()
         self.instantiate_ports()
         self.convert_output_ports()
+        self.neighbours = [output_port[2] for output_port in self.output_ports]
         self.initialise_routing_table()
         self.periodic_update_timer = time.time()
         self.routing_table_timer = time.time()
@@ -29,13 +30,14 @@ class Router:
     def __str__(self):
         return f'Router ID: {self.id}\n' \
             f'Input Ports: {self.input_ports}\n' \
-            f'Output Ports: {self.output_ports}\n'
+            f'Output Ports: {self.output_ports}\n' \
+            f'Neighbours: {self.neighbours}\n' \
     
     def display_routing_table(self):
         print('--------------------------------')
         print(f'Router: {self.id}')
         for entry in self.routing_table.keys():
-            print(f'Destination: {entry} Cost: {self.routing_table[entry][0]}, Next hop: {self.routing_table[entry][1][0]} Is valid: {self.routing_table[entry][2]} Is Neighbour: {self.routing_table[entry][3]}')
+            print(f'Destination: {entry}, Cost: {self.routing_table[entry][0]}, Next hop: {self.routing_table[entry][1][0]}, Is valid: {self.routing_table[entry][2]}')
         print('--------------------------------')
 
     def instantiate_ports(self):
@@ -61,7 +63,7 @@ class Router:
 
     def initialise_routing_table(self):
         for output in self.output_ports:
-            self.routing_table[output[2]] = (output[1], (output[2], output[0]), True, True)
+            self.routing_table[output[2]] = (output[1], (output[2], output[0]), True) #cost, (next hop, port), is_valid
 
     def construct_packet(self, neighbour_id):
         packet = bytearray()
@@ -78,7 +80,6 @@ class Router:
                 continue
             if next_hop == neighbour_id: #split-horizon with poison reverse
                 cost = 16
-                #print(f"Poison reverse: setting cost to 16 for {dest_id} to {neighbour_id}")
 
             packet += (2).to_bytes(2, 'big') #address family identifier (AF_INET)
             packet += (0).to_bytes(2, 'big') #Route tag (set to 0)
@@ -146,12 +147,10 @@ class Router:
                 return
             index += 4
             try:
-                #print(f"Received route from {sender_id} to {dest_id} with cost {cost}")
                 routes.append((sender_id, dest_id, cost))
             except Exception as e:
                 print(f"Error processing route: {e}")
         try:
-            #print("calculating routes...")
             self.calculate_routes(routes) #Update the routing table with the new routes
         except Exception as e:
             print(f"Error calculating routes: {e}")
@@ -168,7 +167,6 @@ class Router:
             
             packet = self.construct_packet(neighbour_id)
             self.send_socket.sendto(packet, ('localhost', neighbour_port))
-            #print(f"Packet sent to router {neighbour_id} on port {neighbour_port}")
 
     def update_timers(self):
         if time.time() - ROUTER.periodic_update_timer >= PERIODIC_UPDATE_INTERVAL: #Periodic updates
