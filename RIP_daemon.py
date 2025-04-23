@@ -80,6 +80,7 @@ class Router:
                 continue
             if next_hop == neighbour_id: #split-horizon with poison reverse
                 cost = 16
+                #print(f"Poison reverse: setting cost to 16 for {dest_id} via {next_hop}")
                 
 
             packet += (2).to_bytes(2, 'big') #address family identifier (AF_INET)
@@ -111,7 +112,7 @@ class Router:
         if not valid_id:
             print('Router is not a neighbour. Packet dropped.')
             return
-        print(f"Received packet from {sender_id} on port {packet[3]}")
+        #print(f"Received packet from {sender_id} on port {packet[3]}")
 
         self.route_timers[sender_id] = time.time() #Reset the route timer for the sender upon receiving a packet
 
@@ -151,6 +152,7 @@ class Router:
                 return
             index += 4
             try:
+                print(f"Received route from {sender_id} to {dest_id} with cost {cost} via {next_hop}")
                 routes.append((sender_id, dest_id, cost))
             except Exception as e:
                 print(f"Error processing route: {e}")
@@ -171,35 +173,35 @@ class Router:
             
             packet = self.construct_packet(neighbour_id)
             self.send_socket.sendto(packet, ('localhost', neighbour_port))
-            print(f"Sent packet to {neighbour_id} on port {neighbour_port}")
+            #print(f"Sent packet to {neighbour_id} on port {neighbour_port}")
 
     def update_timers(self):
-        if time.time() - ROUTER.periodic_update_timer >= PERIODIC_UPDATE_INTERVAL: #Periodic updates
+        if time.time() - self.periodic_update_timer >= PERIODIC_UPDATE_INTERVAL:  # Periodic updates
             self.send_packets()
-            ROUTER.periodic_update_timer = time.time()
-        
-        if time.time() - ROUTER.routing_table_timer >= ROUTING_TABLE_PRINT_INTERVAL: #Print routing table
-            ROUTER.display_routing_table()
-            ROUTER.routing_table_timer = time.time()
+            self.periodic_update_timer = time.time()
 
-        for entry in list(self.routing_table.keys()): #Update the route timers
-            if entry not in ROUTER.route_timers:
-                ROUTER.route_timers[entry] = time.time()
+        if time.time() - self.routing_table_timer >= ROUTING_TABLE_PRINT_INTERVAL:  # Print routing table
+            self.display_routing_table()
+            self.routing_table_timer = time.time()
+
+        for entry in list(self.routing_table.keys()):  # Update the route timers
+            if entry not in self.route_timers:
+                self.route_timers[entry] = time.time()
             else:
-                if self.routing_table[entry][2] == True: #Only need to consider valid routes
-                    if time.time() - ROUTER.route_timers[entry] >= ROUTE_TIMEOUT:
+                if self.routing_table[entry][2] == True:  # Only need to consider valid routes
+                    if time.time() - self.route_timers[entry] >= ROUTE_TIMEOUT:
                         print(f"Route to {entry} has timed out.")
-                        self.routing_table[entry] = (16, self.routing_table[entry][1], False) #Set the route to invalid
+                        self.routing_table[entry] = (16, self.routing_table[entry][1], False)  # Set the route to invalid
                         print(f"Route to {entry} is now invalid.")
-                        del ROUTER.route_timers[entry]
-                        ROUTER.garbage_timers[entry] = time.time() #Add garbage timer
-        
-        for entry in list(ROUTER.garbage_timers.keys()): #Update the garbage collection timers and delete the routes if necessary
-            if time.time() - ROUTER.garbage_timers[entry] >= GARBAGE_COLLECTION_INTERVAL:
+                        del self.route_timers[entry]
+                        self.garbage_timers[entry] = time.time()  # Add garbage timer
+
+        for entry in list(self.garbage_timers.keys()):  # Update the garbage collection timers and delete the routes if necessary
+            if time.time() - self.garbage_timers[entry] >= GARBAGE_COLLECTION_INTERVAL:
                 print(f"Route to {entry} has been garbage collected.")
-                del ROUTER.route_timers[entry]
+                del self.route_timers[entry]
                 del self.routing_table[entry]
-                del  ROUTER.garbage_timers[entry]
+                del self.garbage_timers[entry]
 
     def calculate_routes(self, routes):
         """
@@ -218,7 +220,7 @@ class Router:
                 self.route_timers[dest_id] = time.time()
                 if dest_id in self.garbage_timers:
                     del self.garbage_timers[dest_id]  # Reset garbage timer
-                print(f"Route to {dest_id} via {sender_id} refreshed.")
+                #print(f"Route to {dest_id} via {sender_id} refreshed.")
                 self.routing_table[dest_id] = (cost, (sender_id, self.output_ports[0][0]), True)
 
             # Reset the route timer for the sender
@@ -226,11 +228,17 @@ class Router:
                 self.route_timers[sender_id] = time.time()
                 if sender_id in self.garbage_timers:
                     del self.garbage_timers[sender_id]
-                print(f"Route to {sender_id} refreshed.")
+                #print(f"Route to {sender_id} refreshed.")
                 # Add the sender to the routing table if not already present
                 self.routing_table[sender_id] = (cost, (sender_id, self.output_ports[0][0]), True)
-   
-            total_cost = cost + self.routing_table[sender_id][0]
+
+            print(f"initial cost to {dest_id} via {sender_id}: {cost}")
+            if sender_id in self.routing_table:
+                total_cost = cost + self.routing_table[sender_id][0]
+                print(f"increasing cost by {self.routing_table[sender_id][0]}")
+            else:
+                total_cost = self.routing_table[dest_id][0]
+            print(f"new cost to {dest_id} via {sender_id}: {total_cost}")
 
             # Ignore if total cost exceeds the maximum allowed cost
             if total_cost > 16:
