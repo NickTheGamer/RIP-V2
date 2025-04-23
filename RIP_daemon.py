@@ -79,7 +79,6 @@ class Router:
             if not is_valid: #If the route is invalid, we don't send it
                 continue
             if next_hop == neighbour_id: #split-horizon with poison reverse
-                print(f"Poison reverse for {dest_id} via {neighbour_id}")
                 cost = 16
                 
 
@@ -113,13 +112,8 @@ class Router:
             print('Router is not a neighbour. Packet dropped.')
             return
         print(f"Received packet from {sender_id} on port {packet[3]}")
-        try:
-            self.route_timers[sender_id] = time.time() #Reset the route timer for the sender
-            print(f"Route timer for {sender_id} reset. Decode packet callled")
-        except KeyError:
-            print(f"Sender {sender_id} not in route timers.")
 
-        #Check the rest of the packet
+        self.route_timers[sender_id] = time.time() #Reset the route timer for the sender upon receiving a packet
 
         index = 4 #Now we iterate over the rest of the packet to extract RIP entries
         routes = []
@@ -160,10 +154,10 @@ class Router:
                 routes.append((sender_id, dest_id, cost))
             except Exception as e:
                 print(f"Error processing route: {e}")
-        try:
-            self.calculate_routes(routes) #Update the routing table with the new routes
-        except Exception as e:
-            print(f"Error calculating routes: {e}")
+        #try:
+        self.calculate_routes(routes) #Update the routing table with the new routes
+        #except Exception as e:
+            #print(f"Error calculating routes: {e}")
 
     def send_packets(self):
         for output in self.output_ports:
@@ -214,8 +208,6 @@ class Router:
         and updates the table with the cheapest path.
         Also resets route timers and removes garbage timers for received routes.
         """
-        print(f"route timers: {self.route_timers}")
-        print(f"garbage timers: {self.garbage_timers}")
         for sender_id, dest_id, cost in routes:
             # Ignore routes with cost 16 (unreachable)
             if cost == 16:
@@ -227,6 +219,7 @@ class Router:
                 if dest_id in self.garbage_timers:
                     del self.garbage_timers[dest_id]  # Reset garbage timer
                 print(f"Route to {dest_id} via {sender_id} refreshed.")
+                self.routing_table[dest_id] = (cost, (sender_id, self.output_ports[0][0]), True)
 
             # Reset the route timer for the sender
             if sender_id in self.route_timers:
@@ -234,11 +227,8 @@ class Router:
                 if sender_id in self.garbage_timers:
                     del self.garbage_timers[sender_id]
                 print(f"Route to {sender_id} refreshed.")
-            else:
                 # Add the sender to the routing table if not already present
                 self.routing_table[sender_id] = (cost, (sender_id, self.output_ports[0][0]), True)
-                self.route_timers[sender_id] = time.time()
-
    
             total_cost = cost + self.routing_table[sender_id][0]
 
