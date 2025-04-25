@@ -42,9 +42,12 @@ class Router:
 
     def instantiate_ports(self):
         for port in self.input_ports:
-            sock = socket(AF_INET, SOCK_DGRAM)
-            sock.bind(('', port))
-            SOCKETS.append(sock)
+            try:
+                sock = socket(AF_INET, SOCK_DGRAM)
+                sock.bind(('', port))
+                SOCKETS.append(sock)
+            except Exception as e:
+                print(f"Failed to bind to input port {port}: {e}")
 
     def check_constraints(self):
         if self.id < 1 or self.id > 64000:
@@ -76,9 +79,9 @@ class Router:
             dest_id = entry
             cost, (next_hop, _), is_valid = self.routing_table[entry]
 
-            if not is_valid: #If the route is invalid, we don't send it
-                continue
-            if next_hop == neighbour_id: #split-horizon with poison reverse
+            #if not is_valid: #If the route is invalid, we don't send it
+                #continue
+            if next_hop == neighbour_id or not is_valid: #split-horizon with poison reverse 
                 cost = 16
                 #print(f"Poison reverse: setting cost to 16 for {dest_id} via {next_hop}")
                 
@@ -112,9 +115,13 @@ class Router:
         if not valid_id:
             print('Router is not a neighbour. Packet dropped.')
             return
-        #print(f"Received packet from {sender_id} on port {packet[3]}")
-
-        self.route_timers[sender_id] = time.time() #Reset the route timer for the sender upon receiving a packet
+        print(f"Received packet from {sender_id} on port {self.input_ports[0]}")
+        try:
+            self.route_timers[sender_id] = time.time() #Reset the route timer for the sender upon receiving a packet
+            print(f"Reset route timer for sender {sender_id}")
+        except Exception as e:
+            print(f"Error resetting route timer for sender {sender_id}: {e}")
+            return
 
         index = 4 #Now we iterate over the rest of the packet to extract RIP entries
         routes = []
@@ -152,11 +159,10 @@ class Router:
                 return
             index += 4
             try:
-                print(f"Received route from {sender_id} to {dest_id} with cost {cost} via {next_hop}")
                 routes.append((sender_id, dest_id, cost))
             except Exception as e:
                 print(f"Error processing route: {e}")
-        #try:
+
         self.calculate_routes(routes) #Update the routing table with the new routes
         #except Exception as e:
             #print(f"Error calculating routes: {e}")
@@ -168,12 +174,12 @@ class Router:
 
             if neighbour_id not in self.routing_table: #If the neighbour is not in the routing table, we don't send a packet
                 continue
-            if self.routing_table[neighbour_id][2] == False: #If the route is invalid, we don't send a packet
-                continue
+            #if self.routing_table[neighbour_id][2] == False: #If the route is invalid, we don't send a packet
+                #continue
             
             packet = self.construct_packet(neighbour_id)
             self.send_socket.sendto(packet, ('localhost', neighbour_port))
-            #print(f"Sent packet to {neighbour_id} on port {neighbour_port}")
+            print(f"Sent packet to {neighbour_id} on port {neighbour_port}")
 
     def update_timers(self):
         if time.time() - self.periodic_update_timer >= PERIODIC_UPDATE_INTERVAL:  # Periodic updates
@@ -195,6 +201,8 @@ class Router:
                         print(f"Route to {entry} is now invalid.")
                         del self.route_timers[entry]
                         self.garbage_timers[entry] = time.time()  # Add garbage timer
+                        self.send_packets()
+                        print(f"Sent triggered update for invalid route to {entry}. Update timers function called.")
 
         for entry in list(self.garbage_timers.keys()):  # Update the garbage collection timers and delete the routes if necessary
             if time.time() - self.garbage_timers[entry] >= GARBAGE_COLLECTION_INTERVAL:
@@ -208,7 +216,7 @@ class Router:
         Updates the routing table based on received routes.
         Ensures no loops, ignores unreachable routes (cost=16),
         and updates the table with the cheapest path.
-        Also resets route timers and removes garbage timers for received routes.
+        Sends triggered updates when routes become invalid.
         """
         for sender_id, dest_id, cost in routes:
             # Ignore routes with cost 16 (unreachable)
@@ -220,25 +228,17 @@ class Router:
                 self.route_timers[dest_id] = time.time()
                 if dest_id in self.garbage_timers:
                     del self.garbage_timers[dest_id]  # Reset garbage timer
-                #print(f"Route to {dest_id} via {sender_id} refreshed.")
-                self.routing_table[dest_id] = (cost, (sender_id, self.output_ports[0][0]), True)
 
             # Reset the route timer for the sender
             if sender_id in self.route_timers:
                 self.route_timers[sender_id] = time.time()
                 if sender_id in self.garbage_timers:
                     del self.garbage_timers[sender_id]
-                #print(f"Route to {sender_id} refreshed.")
-                # Add the sender to the routing table if not already present
-                self.routing_table[sender_id] = (cost, (sender_id, self.output_ports[0][0]), True)
 
-            print(f"initial cost to {dest_id} via {sender_id}: {cost}")
             if sender_id in self.routing_table:
                 total_cost = cost + self.routing_table[sender_id][0]
-                print(f"increasing cost by {self.routing_table[sender_id][0]}")
             else:
                 total_cost = self.routing_table[dest_id][0]
-            print(f"new cost to {dest_id} via {sender_id}: {total_cost}")
 
             # Ignore if total cost exceeds the maximum allowed cost
             if total_cost > 16:
@@ -259,6 +259,14 @@ class Router:
                 self.routing_table[dest_id] = (total_cost, (sender_id, self.output_ports[0][0]), True)
                 self.route_timers[dest_id] = time.time()  # Reset the timer for this route
 
+        # Check for invalid routes and trigger updates if necessary
+        for dest_id in list(self.routing_table.keys()):
+            cost, next_hop, is_valid = self.routing_table[dest_id]
+            if not is_valid and cost != 16:
+                # Mark the route as invalid and set the cost to 16
+                self.routing_table[dest_id] = (16, next_hop, False)
+                print("Triggered update: Sending updates for invalid routes. Calculate routes function called.")
+                self.send_packets()
 
 def read_config_file(filename):
     #Reads a config file for a single router and returns a dictionary with the configuration.
