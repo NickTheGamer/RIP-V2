@@ -136,7 +136,7 @@ class Router:
             index += 4
 
             try:
-                validate_route_entry(sender_id, dest_id, next_hop, cost)  # Check received constraints
+                self.validate_route_entry(sender_id, dest_id, next_hop, cost)  # Check received constraints
                 routes.append((sender_id, dest_id, next_hop, cost))
             except ValueError as e:
                 print(e)
@@ -210,8 +210,18 @@ class Router:
         Sends triggered updates when routes become invalid.
         """
         for sender_id, dest_id, next_hop, cost in routes:
-            # Ignore routes with cost 16 (unreachable)
+
+            # Corresponding output port for sender_id
+            correct_port = self.find_output_port(sender_id)
+
+            # Routes with cost 16 are poisoned updates and need to be addressed
             if cost == 16:
+                if dest_id in self.routing_table:
+                    # Only if it's still valid and the next hop was the sender
+                    if self.routing_table[dest_id][0] != 16 and self.routing_table[dest_id][1][0] == sender_id:
+                        print(f"Invalidating route to {dest_id} via {sender_id}")
+                        self.routing_table[dest_id] = (16, (sender_id, correct_port), False)
+                        self.garbage_timers[dest_id] = time.time()
                 continue
 
             # Reset the route timer for the destination if the sender is the next hop
@@ -241,8 +251,6 @@ class Router:
                 continue
             if next_hop == self.id:
                 continue
-            
-            correct_port = self.find_output_port(sender_id)
 
             # Update the routing table if:
             # 1. The destination is not in the table, or
@@ -268,20 +276,20 @@ class Router:
         # Update timers after processing all routes
         self.update_timers()
 
-def validate_route_entry(sender_id, dest_id, next_hop, cost):
-    """
-    Validates a single route entry.
-    Ensures that sender_id, dest_id, next_hop, and cost are within valid ranges.
-    """
-    if sender_id < 1 or sender_id > 64000:
-        raise ValueError(f"Invalid sender ID {sender_id}. Must be between 1 and 64000.")
-    if dest_id < 1 or dest_id > 64000:
-        raise ValueError(f"Invalid destination ID {dest_id}. Must be between 1 and 64000.")
-    if next_hop < 1 or next_hop > 64000:
-        raise ValueError(f"Invalid next hop {next_hop}. Must be between 1 and 64000.")
-    if cost < 1 or cost > 16:
-        raise ValueError(f"Invalid cost {cost}. Must be between 1 and 16.")
-    return True
+    def validate_route_entry(self, sender_id, dest_id, next_hop, cost):
+        """
+        Validates a single route entry.
+        Ensures that sender_id, dest_id, next_hop, and cost are within valid ranges.
+        """
+        if sender_id < 1 or sender_id > 64000:
+            raise ValueError(f"Invalid sender ID {sender_id}. Must be between 1 and 64000.")
+        if dest_id < 1 or dest_id > 64000:
+            raise ValueError(f"Invalid destination ID {dest_id}. Must be between 1 and 64000.")
+        if next_hop < 1 or next_hop > 64000:
+            raise ValueError(f"Invalid next hop {next_hop}. Must be between 1 and 64000.")
+        if cost < 1 or cost > 16:
+            raise ValueError(f"Invalid cost {cost}. Must be between 1 and 16.")
+        return True
 
 def read_config_file(filename):
     #Reads a config file for a single router and returns a dictionary with the configuration.

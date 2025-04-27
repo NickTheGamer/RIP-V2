@@ -60,4 +60,6 @@ ________________________________________________________________________________
 1. Currently timers bounce around instead of permeating in one direction, ie gets timed out and garbage collected by one timer but then receives Route
 from router further away that hasn't garbage collected yet. Clearly triggered upates not being accepted and immediately setting route to invalid
 
+- Almost fixed
+
 2. When Timer comes back online it's costs get mixed around, ie. I kill router 2, wait for convergence, revive it then link costs are wrong way around
