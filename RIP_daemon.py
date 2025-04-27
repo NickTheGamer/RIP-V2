@@ -192,6 +192,17 @@ class Router:
                 del self.routing_table[entry]
                 del self.garbage_timers[entry]
 
+    def find_output_port(self, neighbor_id):
+        """
+        Given a neighbor router ID, find the correct output port number
+        to reach that neighbor. Returns None if not found.
+        """
+        for output_port in self.output_ports:
+            if output_port[2] == neighbor_id:
+                return output_port[0]
+        return None
+
+
     def calculate_routes(self, routes):
         """
         Updates the routing table based on received routes.
@@ -235,6 +246,10 @@ class Router:
             # Check for loops: avoid adding a route back to the sender
             if dest_id == self.id:
                 continue
+            if next_hop == self.id:
+                continue
+            
+            correct_port = self.find_output_port(sender_id)
 
             # Update the routing table if:
             # 1. The destination is not in the table, or
@@ -244,17 +259,18 @@ class Router:
                 total_cost < self.routing_table[dest_id][0] or
                 self.routing_table[dest_id][1][0] == sender_id):
                 
-                self.routing_table[dest_id] = (total_cost, (sender_id, self.output_ports[0][0]), True)
+                self.routing_table[dest_id] = (total_cost, (sender_id, correct_port), True)
                 self.route_timers[dest_id] = time.time()  # Reset the timer for this route
                 if dest_id in self.garbage_timers:
                     del self.garbage_timers[dest_id]  # Remove from garbage timers
 
-        # Add the sender itself as a direct route
-        if sender_id not in self.routing_table:
-            self.routing_table[sender_id] = (total_cost, (sender_id, self.input_ports[0]), True)  
-            self.route_timers[sender_id] = time.time()
-            if dest_id in self.garbage_timers:
-                    del self.garbage_timers[dest_id]  # Remove from garbage timers
+            # Add the sender itself as a direct route
+            if sender_id not in self.routing_table:
+
+                self.routing_table[sender_id] = (total_cost, (sender_id, correct_port), True)  
+                self.route_timers[sender_id] = time.time()
+                if dest_id in self.garbage_timers:
+                        del self.garbage_timers[dest_id]  # Remove from garbage timers
 
         # Update timers after processing all routes
         self.update_timers()
