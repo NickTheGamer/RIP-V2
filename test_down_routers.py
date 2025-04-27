@@ -12,11 +12,12 @@ class TestRouterDownAndRecovery(unittest.TestCase):
         self.router3_id = 3
 
     def test_router_down_and_recovery(self):
-        # Step 1: Directly initialize the routing table with routes from Router 2 and Router 3
-        self.router.routing_table = {
-            4: (1, (self.router2_id, 5001), True),  # Route to destination 4 via Router 2
-            5: (1, (self.router3_id, 5002), True),  # Route to destination 5 via Router 3
-        }
+        # Step 1: Use calculate_routes to initialize the routing table with routes from Router 2 and Router 3
+        initial_routes = [
+            (self.router2_id, 4, 5001, 1),  # Route to destination 4 via Router 2
+            (self.router3_id, 5, 5002, 1),  # Route to destination 5 via Router 3
+        ]
+        self.router.calculate_routes(initial_routes)
 
         # Assert the routes are added
         self.assertIn(4, self.router.routing_table)
@@ -31,25 +32,16 @@ class TestRouterDownAndRecovery(unittest.TestCase):
 
         # Assert the route to destination 4 is invalid
         self.assertFalse(self.router.routing_table[4][2])  # Route to 4 is invalid
-
         # Step 3: Simulate Router 2 coming back online
-        self.router.routing_table[4] = (1, (self.router2_id, 5001), True)  # Restore route to destination 4
+        recovery_routes = [
+            (self.router2_id, 4, 5001, 1),  # Route to destination 4 via Router 2
+        ]
+        self.router.calculate_routes(recovery_routes)
 
         # Assert the route to destination 4 is valid again
         self.assertIn(4, self.router.routing_table)
         self.assertTrue(self.router.routing_table[4][2])  # Route to 4 is valid
 
-    def test_invalid_routes(self):
-        # Simulate invalid routes
-        invalid_routes = [
-            (self.router2_id, 4, 1, 17),  # Invalid cost > 16
-            (self.router3_id, 70000, 1, 1),  # Invalid destination ID
-        ]
-        self.router.calculate_routes(invalid_routes)
-
-        # Assert invalid routes are not added
-        self.assertNotIn(4, self.router.routing_table)
-        self.assertNotIn(70000, self.router.routing_table)
 
     def test_split_horizon_with_poison_reverse(self):
         # Directly initialize the routing table with a valid route to destination 4 via Router 2

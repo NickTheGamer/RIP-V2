@@ -238,7 +238,7 @@ class Router:
                     del self.garbage_timers[sender_id]
 
             # Calculate the total cost
-            if sender_id in self.routing_table:
+            if sender_id in self.routing_table and self.routing_table[sender_id][2]:  # Only if sender is valid
                 total_cost = cost + self.routing_table[sender_id][0]
             else:
                 total_cost = cost  # Default to the received cost if sender is not in the table
@@ -268,12 +268,11 @@ class Router:
 
             # Add the sender itself as a direct route
             if sender_id not in self.routing_table:
-
                 self.routing_table[sender_id] = (total_cost, (sender_id, correct_port), True)  
                 self.route_timers[sender_id] = time.time()
                 if dest_id in self.garbage_timers:
                         del self.garbage_timers[dest_id]  # Remove from garbage timers
-
+     
         # Update timers after processing all routes
         self.update_timers()
 
