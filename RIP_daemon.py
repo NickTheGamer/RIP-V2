@@ -105,11 +105,6 @@ class Router:
             return
 
         sender_id = int.from_bytes(packet[2:4], 'big')  # Extract sender ID
-        try:
-            validate_route_entry(sender_id, sender_id, sender_id, 1)  # Validate sender ID
-        except ValueError as e:
-            print(e)
-            return
 
         self.route_timers[sender_id] = time.time()  # Reset the timer for this sender
         index = 4  # Start reading RIP entries
@@ -141,8 +136,8 @@ class Router:
             index += 4
 
             try:
-                validate_route_entry(sender_id, dest_id, next_hop, cost)  # Validate route entry
-                routes.append((sender_id, dest_id, cost))
+                validate_route_entry(sender_id, dest_id, next_hop, cost)  # Check received constraints
+                routes.append((sender_id, dest_id, next_hop, cost))
             except ValueError as e:
                 print(e)
 
@@ -165,7 +160,6 @@ class Router:
     def update_timers(self):
         if time.time() - self.periodic_update_timer >= PERIODIC_UPDATE_INTERVAL:  # Periodic updates
             self.send_packets()
-            #print("Periodic update: Packets sent.")
             self.periodic_update_timer = time.time()
 
         if time.time() - self.routing_table_timer >= ROUTING_TABLE_PRINT_INTERVAL:  # Print routing table
@@ -204,15 +198,9 @@ class Router:
         and updates the table with the cheapest path.
         Sends triggered updates when routes become invalid.
         """
-        for sender_id, dest_id, cost in routes:
+        for sender_id, dest_id, next_hop, cost in routes:
             # Ignore routes with cost 16 (unreachable)
             if cost == 16:
-                continue
-
-            try:
-                validate_route_entry(sender_id, dest_id, sender_id, cost)  # Validate route entry
-            except ValueError as e:
-                print(e)
                 continue
 
             # Reset the route timer for the destination if the sender is the next hop
@@ -239,6 +227,8 @@ class Router:
 
             # Check for loops: avoid adding a route back to the sender
             if dest_id == self.id:
+                continue
+            if next_hop == self.id:
                 continue
 
             # Update the routing table if:
