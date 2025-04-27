@@ -259,7 +259,7 @@ class Router:
             # 3. The next hop for the destination is the sender (to refresh the route)
             if (dest_id not in self.routing_table or
                 total_cost < self.routing_table[dest_id][0] or
-                self.routing_table[dest_id][1][0] == sender_id):
+                (self.routing_table[dest_id][1][0] == sender_id and total_cost < self.routing_table[dest_id][0])):
                 
                 self.routing_table[dest_id] = (total_cost, (sender_id, correct_port), True)
                 self.route_timers[dest_id] = time.time()  # Reset the timer for this route
