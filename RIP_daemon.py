@@ -7,7 +7,7 @@ SOCKETS = []
 PERIODIC_UPDATE_INTERVAL = 5       # seconds
 ROUTE_TIMEOUT = 30                 # 6 × periodic
 GARBAGE_COLLECTION_INTERVAL = 20   # 4 × periodic
-ROUTING_TABLE_PRINT_INTERVAL = 15 # seconds
+ROUTING_TABLE_PRINT_INTERVAL = 15  # seconds
 
 class Router:
     
@@ -119,8 +119,6 @@ class Router:
             # Extract fields from the RIP entry
             dest_id = int.from_bytes(packet[index + 4:index + 8], 'big')
             cost = int.from_bytes(packet[index + 16:index + 20], 'big')
-
-
 
             # Add the route to the list for further processing
             routes.append((sender_id, dest_id, cost))
