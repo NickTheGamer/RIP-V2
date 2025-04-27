@@ -98,6 +98,9 @@ class Router:
         return packet
 
     def decode_packet(self, packet):
+        """
+        Decodes a received RIP packet and processes its routes.
+        """
         if packet[0] != 2:  # Check Command field
             print('Invalid packet header, Command incorrect. Packet dropped')
             return
@@ -106,29 +109,49 @@ class Router:
             return
 
         sender_id = int.from_bytes(packet[2:4], 'big')  # Extract sender ID
-        if sender_id < 1 or sender_id > 64000:
-            print("Invalid Router ID. Packet dropped.")
+        try:
+            validate_route_entry(sender_id, sender_id, sender_id, 1)  # Validate sender ID
+        except ValueError as e:
+            print(e)
             return
 
-        #print(f"Received packet from {sender_id} on port {self.input_ports[0]}")
         self.route_timers[sender_id] = time.time()  # Reset the timer for this sender
         index = 4  # Start reading RIP entries
         routes = []
 
         while index < len(packet):
-            # Extract fields from the RIP entry
-            dest_id = int.from_bytes(packet[index + 4:index + 8], 'big')
-            cost = int.from_bytes(packet[index + 16:index + 20], 'big')
+            if int.from_bytes(packet[index:index+2], 'big') != 2:
+                print("Invalid RIPv2 entry with incorrect Addr Family. Packet dropped.")
+                return
+            index += 2
 
+            if int.from_bytes(packet[index:index+2], 'big') != 0:
+                print("Invalid RIPv2 entry with Route Tag. Packet dropped.")
+                return
+            index += 2
 
+            dest_id = int.from_bytes(packet[index:index+4], 'big')
+            index += 4
 
-            # Add the route to the list for further processing
-            routes.append((sender_id, dest_id, cost))
-            index += 20  # Move to the next RIP entry
+            if int.from_bytes(packet[index:index+4], 'big') != 0:
+                print('Invalid RIPv2 entry, Subnet mask should be 0. Packet dropped.')
+                return
+            index += 4
+
+            next_hop = int.from_bytes(packet[index:index+4], 'big')
+            index += 4
+
+            cost = int.from_bytes(packet[index:index+4], 'big')
+            index += 4
+
+            try:
+                validate_route_entry(sender_id, dest_id, next_hop, cost)  # Validate route entry
+                routes.append((sender_id, dest_id, cost))
+            except ValueError as e:
+                print(e)
 
         # Process the routes (update the routing table)
         self.calculate_routes(routes)
-
 
     def send_packets(self):
         for output in self.output_ports:
@@ -147,6 +170,7 @@ class Router:
     def update_timers(self):
         if time.time() - self.periodic_update_timer >= PERIODIC_UPDATE_INTERVAL:  # Periodic updates
             self.send_packets()
+            #print("Periodic update: Packets sent.")
             self.periodic_update_timer = time.time()
 
         if time.time() - self.routing_table_timer >= ROUTING_TABLE_PRINT_INTERVAL:  # Print routing table
@@ -170,6 +194,7 @@ class Router:
 
         if triggered_update_needed:
             self.send_packets()  # Send a triggered update immediately
+            print("Triggered update: Packets sent.")
 
         for entry in list(self.garbage_timers.keys()):  # Update the garbage collection timers and delete the routes if necessary
             if time.time() - self.garbage_timers[entry] >= GARBAGE_COLLECTION_INTERVAL:
@@ -188,6 +213,12 @@ class Router:
         for sender_id, dest_id, cost in routes:
             # Ignore routes with cost 16 (unreachable)
             if cost == 16:
+                continue
+
+            try:
+                validate_route_entry(sender_id, dest_id, sender_id, cost)  # Validate route entry
+            except ValueError as e:
+                print(e)
                 continue
 
             # Reset the route timer for the destination if the sender is the next hop
@@ -226,14 +257,33 @@ class Router:
                 
                 self.routing_table[dest_id] = (total_cost, (sender_id, self.output_ports[0][0]), True)
                 self.route_timers[dest_id] = time.time()  # Reset the timer for this route
+                if dest_id in self.garbage_timers:
+                    del self.garbage_timers[dest_id]  # Remove from garbage timers
 
         # Add the sender itself as a direct route
         if sender_id not in self.routing_table:
-            self.routing_table[sender_id] = (total_cost, (sender_id, self.input_ports[0]), True)  # Cost = 1 for direct route
+            self.routing_table[sender_id] = (total_cost, (sender_id, self.input_ports[0]), True)  
             self.route_timers[sender_id] = time.time()
+            if dest_id in self.garbage_timers:
+                    del self.garbage_timers[dest_id]  # Remove from garbage timers
 
         # Update timers after processing all routes
         self.update_timers()
+
+def validate_route_entry(sender_id, dest_id, next_hop, cost):
+    """
+    Validates a single route entry.
+    Ensures that sender_id, dest_id, next_hop, and cost are within valid ranges.
+    """
+    if sender_id < 1 or sender_id > 64000:
+        raise ValueError(f"Invalid sender ID {sender_id}. Must be between 1 and 64000.")
+    if dest_id < 1 or dest_id > 64000:
+        raise ValueError(f"Invalid destination ID {dest_id}. Must be between 1 and 64000.")
+    if next_hop < 1 or next_hop > 64000:
+        raise ValueError(f"Invalid next hop {next_hop}. Must be between 1 and 64000.")
+    if cost < 1 or cost > 16:
+        raise ValueError(f"Invalid cost {cost}. Must be between 1 and 16.")
+    return True
 
 def read_config_file(filename):
     #Reads a config file for a single router and returns a dictionary with the configuration.
