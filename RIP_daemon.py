@@ -160,6 +160,7 @@ class Router:
     def update_timers(self):
         if time.time() - self.periodic_update_timer >= PERIODIC_UPDATE_INTERVAL:  # Periodic updates
             self.send_packets()
+            #print("Periodic update: Packets sent.")
             self.periodic_update_timer = time.time()
 
         if time.time() - self.routing_table_timer >= ROUTING_TABLE_PRINT_INTERVAL:  # Print routing table
