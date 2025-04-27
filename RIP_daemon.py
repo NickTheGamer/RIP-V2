@@ -7,7 +7,7 @@ SOCKETS = []
 PERIODIC_UPDATE_INTERVAL = 5       # seconds
 ROUTE_TIMEOUT = 30                 # 6 × periodic
 GARBAGE_COLLECTION_INTERVAL = 20   # 4 × periodic
-ROUTING_TABLE_PRINT_INTERVAL = 15 # seconds
+ROUTING_TABLE_PRINT_INTERVAL = 15  # seconds
 
 class Router:
     
@@ -81,12 +81,8 @@ class Router:
             dest_id = entry
             cost, (next_hop, _), is_valid = self.routing_table[entry]
 
-            #if not is_valid: #If the route is invalid, we don't send it
-                #continue
             if next_hop == neighbour_id or not is_valid: #split-horizon with poison reverse 
                 cost = 16
-                #print(f"Poison reverse: setting cost to 16 for {dest_id} via {next_hop}")
-                
 
             packet += (2).to_bytes(2, 'big') #address family identifier (AF_INET)
             packet += (0).to_bytes(2, 'big') #Route tag (set to 0)
@@ -160,12 +156,11 @@ class Router:
 
             if neighbour_id not in self.routing_table: #If the neighbour is not in the routing table, we don't send a packet
                 continue
-            if self.routing_table[neighbour_id][2] == False: #If the route is invalid, we don't send a packet
-                continue
+            #if self.routing_table[neighbour_id][2] == False: #If the route is invalid, we don't send a packet
+            #    continue
             
             packet = self.construct_packet(neighbour_id)
             self.send_socket.sendto(packet, ('localhost', neighbour_port))
-            #print(f"Sent packet to {neighbour_id} on port {neighbour_port}")
 
     def update_timers(self):
         if time.time() - self.periodic_update_timer >= PERIODIC_UPDATE_INTERVAL:  # Periodic updates
@@ -185,9 +180,8 @@ class Router:
             else:
                 if self.routing_table[entry][2] == True:  # Only consider valid routes
                     if time.time() - self.route_timers[entry] >= ROUTE_TIMEOUT:
-                        print(f"Route to {entry} has timed out.")
+                        print(f"Route to {entry} has timed out and is now invalid.")
                         self.routing_table[entry] = (16, self.routing_table[entry][1], False)  # Set the route to invalid
-                        print(f"Route to {entry} is now invalid.")
                         del self.route_timers[entry]
                         self.garbage_timers[entry] = time.time()  # Add garbage timer
                         triggered_update_needed = True  # Mark that a triggered update is needed
@@ -363,6 +357,7 @@ def routing_loop():
 
 def main():
     if len(sys.argv) != 2:
+        raise Exception("Invalid command line arguments.")
         sys.exit(1)
 
     config_file = sys.argv[1]
