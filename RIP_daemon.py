@@ -210,13 +210,13 @@ class Router:
         and updates the table with the cheapest path.
         Sends triggered updates when routes become invalid.
         """
-        for sender_id, dest_id, cost in routes:
+        for sender_id, dest_id, next_hop, cost in routes:
             # Ignore routes with cost 16 (unreachable)
             if cost == 16:
                 continue
 
             try:
-                validate_route_entry(sender_id, dest_id, sender_id, cost)  # Validate route entry
+                validate_route_entry(sender_id, dest_id, next_hop, cost)  # Validate route entry
             except ValueError as e:
                 print(e)
                 continue
