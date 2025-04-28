@@ -37,7 +37,12 @@ class Router:
         print('--------------------------------')
         print(f'Router: {self.id}')
         for entry in self.routing_table.keys():
-            print(f'Destination: {entry}, Cost: {self.routing_table[entry][0]}, Next hop: {self.routing_table[entry][1][0]}, Is valid: {self.routing_table[entry][2]}')
+            print(
+                f'Destination: {entry}, '
+                f'Cost: {self.routing_table[entry][0]}, '
+                f'Next hop: {self.routing_table[entry][1][0]}, '
+                f'Is valid: {self.routing_table[entry][2]}'
+            )
         print('--------------------------------')
 
     def instantiate_ports(self):
@@ -67,8 +72,9 @@ class Router:
         self.output_ports = [tuple(map(int, output.split('-'))) for output in self.output_ports]
 
     def initialise_routing_table(self):
+        # Routing table layout - Destination: cost, (next hop, port), is_valid
         for output in self.output_ports:
-            self.routing_table[output[2]] = (output[1], (output[2], output[0]), True) #cost, (next hop, port), is_valid
+            self.routing_table[output[2]] = (output[1], (output[2], output[0]), True)
 
     def construct_packet(self, neighbor_id):
         packet = bytearray()
@@ -136,7 +142,8 @@ class Router:
             index += 4
 
             try:
-                self.validate_route_entry(sender_id, dest_id, next_hop, cost)  # Check received constraints
+                # Check received constraints
+                self.validate_route_entry(sender_id, dest_id, next_hop, cost)
                 routes.append((sender_id, dest_id, next_hop, cost))
             except ValueError as e:
                 print(e)
@@ -149,19 +156,22 @@ class Router:
             neighbor_port = output[0]
             neighbor_id = output[2]
 
-            if neighbor_id not in self.routing_table: #If the neighbor is not in the routing table, we don't send a packet
+            # If the neighbor is not in the routing table, we don't send a packet
+            if neighbor_id not in self.routing_table:
                 continue
             
             packet = self.construct_packet(neighbor_id)
             self.send_socket.sendto(packet, ('localhost', neighbor_port))
 
     def update_timers(self):
-        if time.time() - self.periodic_update_timer >= PERIODIC_UPDATE_INTERVAL:  # Periodic updates
+        # Periodic updates
+        if time.time() - self.periodic_update_timer >= PERIODIC_UPDATE_INTERVAL:
             self.send_packets()
             #print("Periodic update: Packets sent.")
             self.periodic_update_timer = time.time()
 
-        if time.time() - self.routing_table_timer >= ROUTING_TABLE_PRINT_INTERVAL:  # Print routing table
+        # Print routing table
+        if time.time() - self.routing_table_timer >= ROUTING_TABLE_PRINT_INTERVAL:
             self.display_routing_table()
             self.routing_table_timer = time.time()
 
@@ -174,7 +184,8 @@ class Router:
                 if self.routing_table[entry][2] == True:  # Only consider valid routes
                     if time.time() - self.route_timers[entry] >= ROUTE_TIMEOUT:
                         print(f"Route to {entry} has timed out and is now invalid.")
-                        self.routing_table[entry] = (16, self.routing_table[entry][1], False)  # Set the route to invalid
+                        # Set the route to invalid
+                        self.routing_table[entry] = (16, self.routing_table[entry][1], False)
                         del self.route_timers[entry]
                         self.garbage_timers[entry] = time.time()  # Add garbage timer
                         triggered_update_needed = True  # Mark that a triggered update is needed
@@ -182,8 +193,9 @@ class Router:
         if triggered_update_needed:
             self.send_packets()  # Send a triggered update immediately
             print("Triggered update: Packets sent.")
-
-        for entry in list(self.garbage_timers.keys()):  # Update the garbage collection timers and delete the routes if necessary
+        
+        # Update the garbage collection timers and delete the routes if necessary
+        for entry in list(self.garbage_timers.keys()):
             if time.time() - self.garbage_timers[entry] >= GARBAGE_COLLECTION_INTERVAL:
                 print(f"Route to {entry} has been garbage collected.")
                 del self.route_timers[entry]
@@ -217,16 +229,20 @@ class Router:
             if cost == 16:
                 if dest_id in self.routing_table:
                     # Only if it's still valid and the next hop was the sender
-                    if self.routing_table[dest_id][0] != 16 and self.routing_table[dest_id][1][0] == sender_id:
+                    if self.routing_table[dest_id][0] != 16 \
+                    and self.routing_table[dest_id][1][0] == sender_id:
                         print(f"Invalidating route to {dest_id} via {sender_id}")
                         self.routing_table[dest_id] = (16, (sender_id, correct_port), False)
                         self.garbage_timers[dest_id] = time.time()
                 continue
 
-            # This occurs when a router is revived
+            # This occurs when a router is revived, also check if its revived after timeout
+            # but before garbage collection
             if sender_id not in self.routing_table and sender_id in self.neighbors \
-            or sender_id in self.garbage_timers and sender_id in self.neighbors: # When revived before garbage collection but post-timeout
-                self.routing_table[sender_id] = (self.neighbors[sender_id], (sender_id, correct_port), True) # cost is from neighbors dictionary
+            or sender_id in self.garbage_timers and sender_id in self.neighbors:
+                # cost is from neighbors dictionary
+                self.routing_table[sender_id] = (self.neighbors[sender_id], (sender_id, correct_port), True)
+                print(f"Router {sender_id} has come online")
                 self.route_timers[sender_id] = time.time()
                 if dest_id in self.garbage_timers:
                         del self.garbage_timers[dest_id]  # Remove from garbage timers
@@ -244,7 +260,8 @@ class Router:
                     del self.garbage_timers[sender_id]
 
             # Calculate the total cost
-            if sender_id in self.routing_table and self.routing_table[sender_id][2]:  # Only if sender is valid
+            # Only if sender is valid
+            if sender_id in self.routing_table and self.routing_table[sender_id][2]:
                 total_cost = cost + self.routing_table[sender_id][0]
             else:
                 total_cost = cost  # Default to the received cost if sender is not in the table
