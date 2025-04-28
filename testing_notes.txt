@@ -1,40 +1,14 @@
-======================================================================
-FAIL: test_link_failure (__main__.TestLargeNetwork.test_link_failure)
-----------------------------------------------------------------------
-Traceback (most recent call last):
-  File "/home/noah-davis/Documents/2025/COSC364/RIP assignment/cosc364-assignment-1/test_large_network.py", line 111, in test_link_failure
-    self.assertEqual(self.router.routing_table.get(3), (16, None, False))
-AssertionError: Tuples differ: (2, (2, None), True) != (16, None, False)
-
-First differing element 0:
-2
-16
-
-- (2, (2, None), True)
-+ (16, None, False)
-
-----------------------------------------------------------------------
-Ran 6 tests in 0.016s
-
-FAILED (failures=1)
-
-
-The calculate routes function did not handle the removal of routes when a link is no longer advertised. 
+___________________________________________________________________________________________________________________
 
 
 
-_____________________________________________________________________________________________________________________________
-
-
-
-Fixed the issue with route timeouts by reseting route timers upon successful packet reception. Manually update route timers dictionairy in decode packets function. line 116
-
+Fixed the issue with route timeouts by reseting route timers upon successful packet reception. Manually update route timers dictionairy in decode packets function. 
 
 
 Next step is to figure out how to bring routers back online once downed.
 
 
-fixed that issue by updating the route table in calculate routes. add the route table if the sender/dest id exists in the route timers table. lines 222 and 231
+fixed that issue by updating the route table in calculate routes. add the route table if the sender/dest id exists in the route timers table. 
 
 
 Next step is to test on a larger network. => test on figure 1
@@ -42,3 +16,56 @@ Next step is to test on a larger network. => test on figure 1
 
 _______________________________________________________________________________________________________________________________________________________-
 
+Route costs are being calculated incorrectly for larger networks. They all seem to converge to a cost of either 12 or 16.
+
+I have noticed that I was updating self.routing_table in calculate routes when i check whether or not the packet was comnig from dest_id or sender_id. Removing this 
+has improved the accuracy of the calculation. routing table should only be updated at the end.
+
+I am now noticing that the unidirectional link from 1 -> 7 is not working. Interestingly, the uni directional link from 7 -> 1 appears to work.
+We should expect a cost of 8 on link 1 -> 7. What is happening is that the route times out and then router 1 finds another route with a cost of 14.
+
+If I only start routers 1 and 7 i noticed that they are not exchanging information leading to routes timing out. 
+Router 1 is capable of sending information to router 7, but router 7 cant send information to router 1.
+This issue appears to be exclusive to these two routers as repeating the test on routers 1 and 2, and routers 7 and 4, works as intended.
+
+Noticed an error in config_1.txt. Output port 11015 was missing leading to router 7 send packets to a port that doesnt exist. Solved.
+
+_____________________________________________________________________________________________________________________________
+
+Downing of router 7 results in extremely slow convergance. But it does converge eventually. I think we need to implement triggered updates.
+
+Added code in update timers and calculate routes to send packets if a route is invalid. I have noticed that there are checks in send and construct packets which prevent packets containing invalid
+routes from being sent. This would block all triggered updates from propagating through the network in theory.
+
+
+_____________________________________________________________________________________________________________________________
+
+created a test_down_routers script to unit test bringing routers down and back online. 
+
+The test invalid routes case was failing due to calculate routes having no mechancism 
+for handling invalid packets. In theory this should be handles by decode packets but 
+to ensure proper test coverage I refactored the decode packets function by removing the 
+validation checks into a helper function to be called in both decode packets and calculate 
+routes. This should also help with code readability in any case.
+
+
+
+The test_router_down case failed because router 4 was marked as not valid after simulating
+the router coming back online. This suggests that the route is not being properly updated
+in the routing table during recovery.
+
+
+_____________________________________________________________________________________________________________________________
+
+1. Currently timers bounce around instead of permeating in one direction, ie gets timed out and garbage collected by one timer but then receives Route
+from router further away that hasn't garbage collected yet. Clearly triggered upates not being accepted and immediately setting route to invalid
+
+- Fixed
+
+2. When Timer comes back online it's costs get mixed around, ie. I kill router 2, wait for convergence, revive it then link costs are wrong way around
+
+- Fixed by moving sender+id check to top of calculate_routes and also making self.neighbors a dictionary with costs
+
+3. When Router comes back online before being garbage collected but after timeout, routers don't revalidate and converge
+
+- Fixed by also checking if sender_id in garbage timers and reinjecting into routing table
