@@ -223,9 +223,9 @@ class Router:
                         self.garbage_timers[dest_id] = time.time()
                 continue
 
-            # Add the sender itself as a direct route
+            # This occurs when a router is revived
             if sender_id not in self.routing_table and sender_id in self.neighbors:
-                self.routing_table[sender_id] = (self.neighbors[sender_id], (sender_id, correct_port), True)  
+                self.routing_table[sender_id] = (self.neighbors[sender_id], (sender_id, correct_port), True) # cost is from neighbors dictionary
                 self.route_timers[sender_id] = time.time()
                 if dest_id in self.garbage_timers:
                         del self.garbage_timers[dest_id]  # Remove from garbage timers
@@ -270,9 +270,6 @@ class Router:
                 self.route_timers[dest_id] = time.time()  # Reset the timer for this route
                 if dest_id in self.garbage_timers:
                     del self.garbage_timers[dest_id]  # Remove from garbage timers
-     
-        # Update timers after processing all routes
-        self.update_timers()
 
     def validate_route_entry(self, sender_id, dest_id, next_hop, cost):
         """

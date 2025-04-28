@@ -60,6 +60,12 @@ ________________________________________________________________________________
 1. Currently timers bounce around instead of permeating in one direction, ie gets timed out and garbage collected by one timer but then receives Route
 from router further away that hasn't garbage collected yet. Clearly triggered upates not being accepted and immediately setting route to invalid
 
-- Almost fixed
+- Fixed
 
 2. When Timer comes back online it's costs get mixed around, ie. I kill router 2, wait for convergence, revive it then link costs are wrong way around
+
+- Fixed by moving sender+id check to top of calculate_routes and also making self.neighbors a dictionary with costs
+
+3. When Router comes back online before being garbage collected but after timeout, routers don't revalidate and converge
+
+- 
