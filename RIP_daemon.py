@@ -20,7 +20,7 @@ class Router:
         self.check_constraints()
         self.instantiate_ports()
         self.convert_output_ports()
-        self.neighbors = {output_port[2]: output_port[1] for output_port in self.output_ports}
+        self.neighbours = [output_port[2] for output_port in self.output_ports]
         self.initialise_routing_table()
         self.periodic_update_timer = time.time()
         self.routing_table_timer = time.time()
@@ -31,7 +31,7 @@ class Router:
         return f'Router ID: {self.id}\n' \
             f'Input Ports: {self.input_ports}\n' \
             f'Output Ports: {self.output_ports}\n' \
-            f'Neighbors: {self.neighbors}\n' \
+            f'Neighbours: {self.neighbours}\n' \
     
     def display_routing_table(self):
         print('--------------------------------')
@@ -70,7 +70,7 @@ class Router:
         for output in self.output_ports:
             self.routing_table[output[2]] = (output[1], (output[2], output[0]), True) #cost, (next hop, port), is_valid
 
-    def construct_packet(self, neighbor_id):
+    def construct_packet(self, neighbour_id):
         packet = bytearray()
 
         packet.append(2) #COMMAND: reponse
@@ -81,7 +81,7 @@ class Router:
             dest_id = entry
             cost, (next_hop, _), is_valid = self.routing_table[entry]
 
-            if next_hop == neighbor_id or not is_valid: #split-horizon with poison reverse 
+            if next_hop == neighbour_id or not is_valid: #split-horizon with poison reverse 
                 cost = 16
 
             packet += (2).to_bytes(2, 'big') #address family identifier (AF_INET)
@@ -146,14 +146,16 @@ class Router:
 
     def send_packets(self):
         for output in self.output_ports:
-            neighbor_port = output[0]
-            neighbor_id = output[2]
+            neighbour_port = output[0]
+            neighbour_id = output[2]
 
-            if neighbor_id not in self.routing_table: #If the neighbor is not in the routing table, we don't send a packet
+            if neighbour_id not in self.routing_table: #If the neighbour is not in the routing table, we don't send a packet
                 continue
+            #if self.routing_table[neighbour_id][2] == False: #If the route is invalid, we don't send a packet
+            #    continue
             
-            packet = self.construct_packet(neighbor_id)
-            self.send_socket.sendto(packet, ('localhost', neighbor_port))
+            packet = self.construct_packet(neighbour_id)
+            self.send_socket.sendto(packet, ('localhost', neighbour_port))
 
     def update_timers(self):
         if time.time() - self.periodic_update_timer >= PERIODIC_UPDATE_INTERVAL:  # Periodic updates
@@ -223,14 +225,6 @@ class Router:
                         self.garbage_timers[dest_id] = time.time()
                 continue
 
-            # This occurs when a router is revived
-            if sender_id not in self.routing_table and sender_id in self.neighbors \
-            or sender_id in self.garbage_timers and sender_id in self.neighbors: # When revived before garbage collection but post-timeout
-                self.routing_table[sender_id] = (self.neighbors[sender_id], (sender_id, correct_port), True) # cost is from neighbors dictionary
-                self.route_timers[sender_id] = time.time()
-                if dest_id in self.garbage_timers:
-                        del self.garbage_timers[dest_id]  # Remove from garbage timers
-
             # Reset the route timer for the destination if the sender is the next hop
             if dest_id in self.routing_table and self.routing_table[dest_id][1][0] == sender_id:
                 self.route_timers[dest_id] = time.time()
@@ -260,17 +254,30 @@ class Router:
                 continue
 
             # Update the routing table if:
-            # 1. The destination is not in the table, or
-            # 2. The new route has a lower cost, or
-            # 3. The next hop for the destination is the sender (to refresh the route)
+            # 1. The destination is not in the table (new route), or
+            # 2. The new route has a lower cost (better path), or
+            # 3. The current route is invalid (revive a dead route), or
+            # 4. The next hop for the destination is the sender (refresh an existing route)
             if (dest_id not in self.routing_table or
                 total_cost < self.routing_table[dest_id][0] or
-                (self.routing_table[dest_id][1][0] == sender_id and total_cost < self.routing_table[dest_id][0])):
-                
+                (not self.routing_table[dest_id][2]) or
+                self.routing_table[dest_id][1][0] == sender_id):
+
                 self.routing_table[dest_id] = (total_cost, (sender_id, correct_port), True)
                 self.route_timers[dest_id] = time.time()  # Reset the timer for this route
                 if dest_id in self.garbage_timers:
                     del self.garbage_timers[dest_id]  # Remove from garbage timers
+
+
+            # Add the sender itself as a direct route
+            if sender_id not in self.routing_table:
+                self.routing_table[sender_id] = (total_cost, (sender_id, correct_port), True)  
+                self.route_timers[sender_id] = time.time()
+                if dest_id in self.garbage_timers:
+                        del self.garbage_timers[dest_id]  # Remove from garbage timers
+     
+        # Update timers after processing all routes
+        self.update_timers()
 
     def validate_route_entry(self, sender_id, dest_id, next_hop, cost):
         """
@@ -342,7 +349,6 @@ def read_config_file(filename):
                 raise ValueError("Router ID must be between 1 and 64000 (inclusive).")
         except ValueError:
             raise ValueError("Output ports must be integers.")
-
     return config
 
 

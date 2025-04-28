@@ -39,7 +39,7 @@ class TestCalculateRoutes(unittest.TestCase):
         ]
         self.router.calculate_routes(updated_routes)
 
-        # Assert the route is updated with the lower cost
+        # Assert the route is updated with the lower cost 
         self.assertEqual(self.router.routing_table[4][0], 3)  # Cost = 1 (to Router 2) + 2
 
         # Attempt to update the route with a higher cost
