@@ -224,7 +224,8 @@ class Router:
                 continue
 
             # This occurs when a router is revived
-            if sender_id not in self.routing_table and sender_id in self.neighbors:
+            if sender_id not in self.routing_table and sender_id in self.neighbors \
+            or sender_id in self.garbage_timers and sender_id in self.neighbors: # When revived before garbage collection but post-timeout
                 self.routing_table[sender_id] = (self.neighbors[sender_id], (sender_id, correct_port), True) # cost is from neighbors dictionary
                 self.route_timers[sender_id] = time.time()
                 if dest_id in self.garbage_timers:

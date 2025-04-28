@@ -68,4 +68,4 @@ from router further away that hasn't garbage collected yet. Clearly triggered up
 
 3. When Router comes back online before being garbage collected but after timeout, routers don't revalidate and converge
 
-- 
+- Fixed by also checking if sender_id in garbage timers and reinjecting into routing table
