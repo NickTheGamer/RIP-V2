@@ -57,6 +57,7 @@ class Router:
                 print(f"Failed to bind to input port {port}: {e}")
 
     def check_constraints(self):
+        "helper function to check constraints on router id and port numbers"
         if self.id < 1 or self.id > 64000:
             raise Exception("Router-id must be between 1 and 64000 (inclusive).")
         for input in self.input_ports:
@@ -69,6 +70,7 @@ class Router:
                 raise Exception("Port numbers must be between 1024 and 64000 (inclusive).")
 
     def convert_output_ports(self):
+        "parses output ports into a list of tuples (port, cost, id)"
         self.output_ports = [tuple(map(int, output.split('-'))) for output in self.output_ports]
 
     def initialise_routing_table(self):
@@ -112,7 +114,7 @@ class Router:
 
         sender_id = int.from_bytes(packet[2:4], 'big')  # Extract sender ID
 
-        self.route_timers[sender_id] = time.time()  # Reset the timer for this sender
+        # self.route_timers[sender_id] = time.time()  # Reset the timer for this sender
         index = 4  # Start reading RIP entries
         routes = []
 
@@ -364,7 +366,7 @@ def read_config_file(filename):
 
 
 def routing_loop():
-    ROUTER.send_packets()
+    ROUTER.send_packets() # share routing table with neighbors
     
     while True:
         readable, _, _ = select.select(SOCKETS, [], [], 1)
