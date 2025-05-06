@@ -195,7 +195,7 @@ class Router:
             else:
                 if self.routing_table[entry][2] == True:  # Only consider valid routes
                     if time.time() - self.route_timers[entry] >= ROUTE_TIMEOUT:
-                        # print(f"Route to {entry} has timed out and is now invalid.")
+                        print(f"Route to {entry} has timed out and is now invalid.")
                         # Set the route to invalid
                         self.routing_table[entry] = (16, self.routing_table[entry][1], False)
                         del self.route_timers[entry]
@@ -209,7 +209,7 @@ class Router:
         # Update the garbage collection timers and delete the routes if necessary
         for entry in list(self.garbage_timers.keys()):
             if time.time() - self.garbage_timers[entry] >= GARBAGE_COLLECTION_INTERVAL:
-                # print(f"Route to {entry} has been garbage collected.")
+                print(f"Route to {entry} has been garbage collected.")
                 del self.route_timers[entry]
                 del self.routing_table[entry]
                 del self.garbage_timers[entry]
